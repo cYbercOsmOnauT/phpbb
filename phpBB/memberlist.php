@@ -1088,7 +1088,7 @@ switch ($mode)
 		if ($mode == 'group')
 		{
 			// We JOIN here to save a query for determining membership for hidden groups. ;)
-			$sql = 'SELECT g.*, ug.user_id
+			$sql = 'SELECT g.*, ug.user_id, ug.group_leader
 				FROM ' . GROUPS_TABLE . ' g
 				LEFT JOIN ' . USER_GROUP_TABLE . ' ug ON (ug.user_pending = 0 AND ug.user_id = ' . $user->data['user_id'] . " AND ug.group_id = $group_id)
 				WHERE g.group_id = $group_id";
@@ -1147,6 +1147,24 @@ switch ($mode)
 					$user_rank_data['img'] .= '<br />';
 				}
 			}
+			// include modules for manage groups link display or not
+			// need to ensure the module is active
+			$can_manage_group = false;
+			if ($user->data['is_registered'] && $group_row['group_leader'])
+			{
+				if (!class_exists('p_master'))
+				{
+					include($phpbb_root_path . 'includes/functions_module.' . $phpEx);
+				}
+				$module = new p_master;
+				$module->list_modules('ucp');
+
+				if ($module->is_active('ucp_groups', 'manage'))
+				{
+					$can_manage_group = true;
+				}
+				unset($module);
+			}
 
 			$template->assign_vars(array(
 				'GROUP_DESC'	=> generate_text_for_display($group_row['group_desc'], $group_row['group_desc_uid'], $group_row['group_desc_bitfield'], $group_row['group_desc_options']),
@@ -1159,7 +1177,8 @@ switch ($mode)
 				'RANK_IMG'		=> $user_rank_data['img'],
 				'RANK_IMG_SRC'	=> $user_rank_data['img_src'],
 
-				'U_PM'			=> ($auth->acl_get('u_sendpm') && $auth->acl_get('u_masspm_group') && $group_row['group_receive_pm'] && $config['allow_privmsg'] && $config['allow_mass_pm']) ? append_sid("{$phpbb_root_path}ucp.$phpEx", 'i=pm&amp;mode=compose&amp;g=' . $group_id) : '',)
+				'U_PM'			=> ($auth->acl_get('u_sendpm') && $auth->acl_get('u_masspm_group') && $group_row['group_receive_pm'] && $config['allow_privmsg'] && $config['allow_mass_pm']) ? append_sid("{$phpbb_root_path}ucp.$phpEx", 'i=pm&amp;mode=compose&amp;g=' . $group_id) : '',
+				'U_MANAGE'		=> ($can_manage_group) ? append_sid("{$phpbb_root_path}ucp.$phpEx", 'i=ucp_groups&amp;mode=manage') : false,)
 			);
 
 			$sql_select = ', ug.group_leader';
@@ -1210,21 +1229,19 @@ switch ($mode)
 		);
 		extract($phpbb_dispatcher->trigger_event('core.memberlist_modify_sql_query_data', compact($vars)));
 
+		$user_types = array(USER_NORMAL, USER_FOUNDER);
+		if ($auth->acl_get('a_user'))
+		{
+			$user_types[] = USER_INACTIVE;
+		}
 		// Count the users ...
-		if ($sql_where)
-		{
-			$sql = 'SELECT COUNT(u.user_id) AS total_users
-				FROM ' . USERS_TABLE . " u$sql_from
-				WHERE u.user_type IN (" . USER_NORMAL . ', ' . USER_FOUNDER . ")
-				$sql_where";
-			$result = $db->sql_query($sql);
-			$total_users = (int) $db->sql_fetchfield('total_users');
-			$db->sql_freeresult($result);
-		}
-		else
-		{
-			$total_users = $config['num_users'];
-		}
+		$sql = 'SELECT COUNT(u.user_id) AS total_users
+			FROM ' . USERS_TABLE . " u$sql_from
+			WHERE " . $db->sql_in_set('u.user_type', $user_types) . "
+			$sql_where";
+		$result = $db->sql_query($sql);
+		$total_users = (int) $db->sql_fetchfield('total_users');
+		$db->sql_freeresult($result);
 
 		// Build a relevant pagination_url
 		$params = $sort_params = array();
@@ -1390,13 +1407,7 @@ switch ($mode)
 			);
 		}
 
-		$user_types = array(USER_NORMAL, USER_FOUNDER);
-		if ($auth->acl_get('a_user'))
-		{
-			$user_types[] = USER_INACTIVE;
-		}
-
-		$start = $pagination->validate_start($start, $config['topics_per_page'], $config['num_users']);
+		$start = $pagination->validate_start($start, $config['topics_per_page'], $total_users);
 
 		// Get us some users :D
 		$sql = "SELECT u.user_id
@@ -1571,12 +1582,12 @@ switch ($mode)
 			'U_HIDE_FIND_MEMBER'	=> ($mode == 'searchuser' || ($mode == '' && $submit)) ? $u_hide_find_member : '',
 			'U_LIVE_SEARCH'			=> ($config['allow_live_searches']) ? append_sid("{$phpbb_root_path}memberlist.$phpEx", 'mode=livesearch') : false,
 			'U_SORT_USERNAME'		=> $sort_url . '&amp;sk=a&amp;sd=' . (($sort_key == 'a' && $sort_dir == 'a') ? 'd' : 'a'),
-			'U_SORT_JOINED'			=> $sort_url . '&amp;sk=c&amp;sd=' . (($sort_key == 'c' && $sort_dir == 'a') ? 'd' : 'a'),
-			'U_SORT_POSTS'			=> $sort_url . '&amp;sk=d&amp;sd=' . (($sort_key == 'd' && $sort_dir == 'a') ? 'd' : 'a'),
-			'U_SORT_EMAIL'			=> $sort_url . '&amp;sk=e&amp;sd=' . (($sort_key == 'e' && $sort_dir == 'a') ? 'd' : 'a'),
-			'U_SORT_ACTIVE'			=> ($auth->acl_get('u_viewonline')) ? $sort_url . '&amp;sk=l&amp;sd=' . (($sort_key == 'l' && $sort_dir == 'a') ? 'd' : 'a') : '',
-			'U_SORT_RANK'			=> $sort_url . '&amp;sk=m&amp;sd=' . (($sort_key == 'm' && $sort_dir == 'a') ? 'd' : 'a'),
-			'U_LIST_CHAR'			=> $sort_url . '&amp;sk=a&amp;sd=' . (($sort_key == 'l' && $sort_dir == 'a') ? 'd' : 'a'),
+			'U_SORT_JOINED'			=> $sort_url . '&amp;sk=c&amp;sd=' . (($sort_key == 'c' && $sort_dir == 'd') ? 'a' : 'd'),
+			'U_SORT_POSTS'			=> $sort_url . '&amp;sk=d&amp;sd=' . (($sort_key == 'd' && $sort_dir == 'd') ? 'a' : 'd'),
+			'U_SORT_EMAIL'			=> $sort_url . '&amp;sk=e&amp;sd=' . (($sort_key == 'e' && $sort_dir == 'd') ? 'a' : 'd'),
+			'U_SORT_ACTIVE'			=> ($auth->acl_get('u_viewonline')) ? $sort_url . '&amp;sk=l&amp;sd=' . (($sort_key == 'l' && $sort_dir == 'd') ? 'a' : 'd') : '',
+			'U_SORT_RANK'			=> $sort_url . '&amp;sk=m&amp;sd=' . (($sort_key == 'm' && $sort_dir == 'd') ? 'a' : 'd'),
+			'U_LIST_CHAR'			=> $sort_url . '&amp;sk=a&amp;sd=' . (($sort_key == 'l' && $sort_dir == 'd') ? 'a' : 'd'),
 
 			'S_SHOW_GROUP'		=> ($mode == 'group') ? true : false,
 			'S_VIEWONLINE'		=> $auth->acl_get('u_viewonline'),

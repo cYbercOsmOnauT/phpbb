@@ -121,8 +121,6 @@ class acp_extensions
 					'U_ACTION' 				=> $this->u_action,
 				));
 
-				add_form_key('version_check_settings');
-
 				$this->tpl_name = 'acp_ext_list';
 			break;
 
@@ -537,7 +535,7 @@ class acp_extensions
 
 		$version_helper = new \phpbb\version_helper($this->cache, $this->config, new \phpbb\file_downloader(), $this->user);
 		$version_helper->set_current_version($meta['version']);
-		$version_helper->set_file_location($version_check['host'], $version_check['directory'], $version_check['filename']);
+		$version_helper->set_file_location($version_check['host'], $version_check['directory'], $version_check['filename'], isset($version_check['ssl']) ? $version_check['ssl'] : false);
 		$version_helper->force_stability($this->config['extension_force_unstable'] ? 'unstable' : null);
 
 		return $updates = $version_helper->get_suggested_updates($force_update, $force_cache);

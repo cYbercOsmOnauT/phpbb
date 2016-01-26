@@ -89,12 +89,13 @@ class phpbb_functional_test_case extends phpbb_test_case
 		// that were added in other tests are gone
 		$this->lang = array();
 		$this->add_lang('common');
-		$this->purge_cache();
 
 		$db = $this->get_db();
 
 		foreach (static::setup_extensions() as $extension)
 		{
+			$this->purge_cache();
+
 			$sql = 'SELECT ext_active
 				FROM ' . EXT_TABLE . "
 				WHERE ext_name = '" . $db->sql_escape($extension). "'";
